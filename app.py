@@ -112,7 +112,7 @@ def call_openai_api(messages_for_api, selected_model_name):
         messages=messages_for_api,
         temperature=0.7,
         top_p=0.9,
-        extra_body={"temperature": 0.97, "top_p": 0.9, "min_new_tokens":10},
+        extra_body={"temperature": 0.97, "top_p": 0.9, "min_new_tokens":10} if config['model'] != 'gpt-3.5-turbo' else {},
     )
     assistant_response = completion.choices[0].message.content
     return assistant_response.replace("Journalist:", "").replace("[name],", "")
