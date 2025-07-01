@@ -1,4 +1,4 @@
 streamlit
 openai
-pdfplumber
+pymupdf
 tiktoken

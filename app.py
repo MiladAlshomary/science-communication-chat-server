@@ -2,7 +2,7 @@ import streamlit as st
 import random
 import time
 import openai
-import pdfplumber
+import fitz  # PyMuPDF
 import tiktoken
 import re
 import json
@@ -16,6 +16,15 @@ import base64
 OPENAI_API_KEY = st.secrets.get("OPENAI_API_KEY")
 journalist_prompt = st.secrets.get("JOURNALIST_PROMPT")
 baseline_journalist_prompt = st.secrets.get("BASELINE_JOURNALIST_PROMPT")
+LAY_SUMMARY_PROMPT = """
+You are an expert science communicator. Your task is to create a lay summary of a conversation between a user and a journalist AI.
+The conversation is about a scientific paper.
+Based on the conversation provided below, generate a concise and easy-to-understand summary for a general audience.
+Focus on the key findings and their significance as discussed in the chat.
+Do not include conversational filler. Present only the summary.
+
+Here is the conversation:
+"""
 
 MODEL_CONFIGS = {
     "GPT-3.5 Turbo": {
@@ -58,36 +67,48 @@ MODEL_CONFIGS = {
 if not OPENAI_API_KEY:
     st.warning("OpenAI API key not found in Streamlit secrets. GPT models will not work.", icon="⚠️")
 
-def save_session_to_json():
-    """Saves the current chat session to a JSON file."""
+def _get_session_data_and_filename():
+    """
+    Prepares session data dictionary and a sanitized filename.
+    Returns a tuple (filename, session_data_dict).
+    Returns (None, None) if the session is not ready to be saved.
+    """
     if not st.session_state.get("last_uploaded_filename") or not st.session_state.get("messages"):
-        return
+        return None, None
 
     # Don't save if it's just the initial message or empty
     if len(st.session_state.messages) <= 1:
+        return None, None
+
+    # Sanitize filename from paper title
+    paper_title = st.session_state.last_uploaded_filename
+    base_title = os.path.splitext(paper_title)[0]
+    sanitized_title = re.sub(r'[^\w\s-]', '', base_title).strip().replace(' ', '_')
+
+    # Get current date for filename
+    current_date_str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+
+    # Create filename
+    filename = f"{sanitized_title}_{current_date_str}.json"
+
+    # Prepare data for JSON
+    session_data = {
+        "paper_title": paper_title,
+        "paper_text": st.session_state.get("extracted_introduction", ""), "user_summary": st.session_state.get("user_summary", ""),
+        "api_config": st.session_state.selected_model_name,
+        "date": datetime.now().isoformat(),
+        "messages": st.session_state.messages,
+    }
+
+    return filename, session_data
+
+def save_session_to_json():
+    """Saves the current chat session to a JSON file."""
+    filename, session_data = _get_session_data_and_filename()
+    if not filename or not session_data:
         return
 
     try:
-        # Sanitize filename from paper title
-        paper_title = st.session_state.last_uploaded_filename
-        base_title = os.path.splitext(paper_title)[0]
-        sanitized_title = re.sub(r'[^\w\s-]', '', base_title).strip().replace(' ', '_')
-
-        # Get current date for filename
-        current_date_str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-
-        # Create filename
-        filename = f"{sanitized_title}_{current_date_str}.json"
-
-        # Prepare data for JSON
-        session_data = {
-            "paper_title": paper_title,
-            "paper_text": st.session_state.get("extracted_introduction", ""),
-            "api_config" : MODEL_CONFIGS[st.session_state.selected_model_name],
-            "date": datetime.now().isoformat(),
-            "messages": st.session_state.messages,
-        }
-
         # Create a directory to store sessions if it doesn't exist
         sessions_dir = "sessions"
         if not os.path.exists(sessions_dir):
@@ -97,7 +118,6 @@ def save_session_to_json():
         filepath = os.path.join(sessions_dir, filename)
         with open(filepath, "w", encoding="utf-8") as f:
             json.dump(session_data, f, indent=4, ensure_ascii=False)
-
         st.sidebar.info(f"Previous session saved to {filepath}")
     except Exception as e:
         st.sidebar.error(f"Failed to save session: {e}")
@@ -127,10 +147,11 @@ def extract_introduction_from_pdf(pdf_file_object):
         return None
 
     try:
-        with pdfplumber.open(pdf_file_object) as pdf:
+        # Read bytes from the uploaded file object and open with fitz
+        with fitz.open(stream=pdf_file_object.read(), filetype="pdf") as doc:
             full_text = ""
-            for page in pdf.pages:
-                page_text = page.extract_text(x_tolerance=10)
+            for page in doc:
+                page_text = page.get_text()
                 if page_text:
                     full_text += page_text + "\n"
 
@@ -144,6 +165,7 @@ def extract_introduction_from_pdf(pdf_file_object):
                     if len(tokens) > max_tokens:
                         truncated_tokens = tokens[:max_tokens]
                         extracted_intro = encoding.decode(truncated_tokens) + "..."
+                    print(extracted_intro)
                 except Exception as e:
                     st.sidebar.warning(f"Could not tokenize/truncate introduction: {e}")
             return extracted_intro if extracted_intro else None
@@ -179,6 +201,7 @@ def loading_intro_from_pdf():
         save_session_to_json()
         st.session_state.selected_model_name = selected_model_name
         st.session_state.messages = []
+        st.session_state.conversation_summary = None
         st.rerun()
 
     # Sidebar for PDF upload
@@ -197,6 +220,7 @@ def loading_intro_from_pdf():
         if st.session_state.last_uploaded_filename != uploaded_file.name:
             # Save the previous session before starting a new one
             save_session_to_json()
+            st.session_state.conversation_summary = None
 
             with st.spinner(f"Processing {uploaded_file.name}..."):
                 st.session_state.extracted_introduction = extract_introduction_from_pdf(uploaded_file)
@@ -226,9 +250,79 @@ def loading_intro_from_pdf():
         st.session_state.last_uploaded_filename = None
         st.session_state.pdf_file_bytes = None
         st.session_state.messages = [{"role": "assistant", "content": "Please upload a paper from the sidebar to start chatting."}]
+        st.session_state.conversation_summary = None
         st.sidebar.info("PDF context removed.")
         # Rerun to update the chat display immediately
         st.rerun()
+
+    st.sidebar.divider()
+    st.sidebar.title("📥 Download Session")
+
+    filename, session_data = _get_session_data_and_filename()
+
+    if filename and session_data:
+        try:
+            json_string = json.dumps(session_data, indent=4, ensure_ascii=False)
+            st.sidebar.download_button(
+                label="Download Chat History",
+                data=json_string,
+                file_name=filename,
+                mime="application/json",
+                help="Download the current chat session as a JSON file."
+            )
+        except Exception as e:
+            st.sidebar.error(f"Could not prepare download: {e}")
+            st.sidebar.download_button(label="Download Chat History", data="", disabled=True)
+    else:
+        st.sidebar.download_button(
+            label="Download Chat History",
+            data="",
+            file_name="chat_history.json",
+            mime="application/json",
+            help="Upload a paper and start a chat to download the session.",
+            disabled=True
+        )
+
+    st.sidebar.divider()
+    st.sidebar.title("📝 Summarize Conversation")
+
+    # A summary can be generated if there is at least one user message
+    user_messages_exist = any(m["role"] == "user" for m in st.session_state.get("messages", []))
+
+    if st.sidebar.button("Generate Lay Summary", disabled=not user_messages_exist, help="Generate a lay summary of the current conversation."):
+        with st.spinner("Generating summary..."):
+            try:
+                # Prepare the conversation content for the summary prompt
+                conversation_history = []
+                for msg in st.session_state.get("messages", []):
+                    # Exclude initial placeholder messages
+                    if "upload a paper" not in msg["content"].lower():
+                        conversation_history.append(f"{msg['role'].capitalize()}: {msg['content']}")
+                
+                conversation_text = "\n\n".join(conversation_history)
+
+                # Prepare messages for the API call
+                summary_prompt_content = f"{LAY_SUMMARY_PROMPT}\n\n{conversation_text}"
+                api_messages_for_summary = [{"role": "user", "content": summary_prompt_content}]
+
+                # Use the currently selected model for summarization
+                selected_model_key = st.session_state.selected_model_name
+                config = MODEL_CONFIGS['GPT-3.5 Turbo']
+                client = openai.OpenAI(base_url=config["base_url"], api_key=config["api_key"])
+                completion = client.chat.completions.create(
+                    model=config["model"],
+                    messages=api_messages_for_summary,
+                )
+                assistant_response = completion.choices[0].message.content
+                
+                st.session_state.conversation_summary = assistant_response
+                st.rerun() # Rerun to display the summary text_area immediately
+            except Exception as e:
+                st.sidebar.error(f"Failed to generate summary: {e}")
+
+    # Display the summary if it exists
+    if "conversation_summary" in st.session_state and st.session_state.conversation_summary:
+        st.sidebar.text_area("Conversation Summary", st.session_state.conversation_summary, height=250, key="summary_display")
 
 st.write("LLM Science Explainers!")
 
