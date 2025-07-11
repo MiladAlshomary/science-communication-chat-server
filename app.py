@@ -14,8 +14,10 @@ import base64
 # Create a secrets.toml file in your .streamlit folder:
 # OPENAI_API_KEY = "your_openai_api_key_here"
 OPENAI_API_KEY = st.secrets.get("OPENAI_API_KEY")
+FIREWORKAI_API_KEY = st.secrets.get("FIREWORKSAI-API-KEY")
 journalist_prompt = st.secrets.get("JOURNALIST_PROMPT")
 baseline_journalist_prompt = st.secrets.get("BASELINE_JOURNALIST_PROMPT")
+
 LAY_SUMMARY_PROMPT = """
 You are an expert science communicator. Your task is to create a lay summary of a conversation between a user and a journalist AI.
 The conversation is about a scientific paper.
@@ -27,41 +29,47 @@ Here is the conversation:
 """
 
 MODEL_CONFIGS = {
-    "GPT-3.5 Turbo": {
+    "System 1": {
         "model": "gpt-3.5-turbo",
         "base_url": "https://api.openai.com/v1",
         "api_key": OPENAI_API_KEY,
         "prompt": baseline_journalist_prompt,
-
     },
-    "Baseline Llama": {
+    # "System 1": {
+    #     "model": "deepseek-ai/DeepSeek-R1-Distill-Qwen-14B",
+    #     "base_url": "http://localhost:7790/v1",
+    #     "api_key": FIREWORKAI_API_KEY,
+    #     "prompt": baseline_journalist_prompt,
+
+    # },
+    "System 2": {
         "model": "meta-llama/Meta-Llama-3-8B-Instruct",
-        "base_url": "http://localhost:7777/v1",
-        "api_key": "not-needed",
+        "base_url": "http://localhost:7789/v1",
+        "api_key": FIREWORKAI_API_KEY,
         "prompt": baseline_journalist_prompt,
 
     },
-    "Fine-tuned Llama": {
+    "System 3": {
         "model": "llm_journalist",
         "base_url": "http://localhost:7777/v1",
         "api_key": "not-needed",
         "prompt": journalist_prompt,
 
     },
-    "Baseline Qwen": {
-        "model": "meta-llama/Meta-Llama-3-8B-Instruct",
-        "base_url": "http://localhost:7000/v1",
-        "api_key": "not-needed",
-        "prompt": baseline_journalist_prompt,
+    # "System 4": {
+    #     "model": "accounts/fireworks/models/qwen2p5-1p5b-instruct",
+    #     "base_url": "https://api.fireworks.ai/inference/v1",
+    #     "api_key": FIREWORKAI_API_KEY,
+    #     "prompt": baseline_journalist_prompt,
 
-    },
-    "Fine-tuned Qwen": {
-        "model": "llm_journalist",
-        "base_url": "http://localhost:7000/v1",
-        "api_key": "not-needed",
-        "prompt": journalist_prompt,
+    # },
+    # "System 5": {
+    #     "model": "accounts/nid2107-80f709/models/ft-journalist-qwen",
+    #     "base_url": "https://api.fireworks.ai/inference/v1",
+    #     "api_key": FIREWORKAI_API_KEY,
+    #     "prompt": journalist_prompt,
 
-    },
+    # },
 }
 
 if not OPENAI_API_KEY:
@@ -125,14 +133,16 @@ def save_session_to_json():
 # Function to call OpenAI API
 def call_openai_api(messages_for_api, selected_model_name):
     config = MODEL_CONFIGS[selected_model_name]
+    print(config)
     client = openai.OpenAI(base_url=config["base_url"], api_key=config["api_key"])
-
+    print(messages_for_api)
     completion = client.chat.completions.create(
         model=config["model"],
         messages=messages_for_api,
         temperature=0.7,
         top_p=0.9,
-        extra_body={"temperature": 0.97, "top_p": 0.9, "min_new_tokens":10} if config['model'] != 'gpt-3.5-turbo' else {},
+        max_completion_tokens=200,
+        extra_body={"temperature": 0.7, "top_p": 0.9, "min_new_tokens":10} if False else {"temperature": 0.7, "top_p": 0.9, "min_tokens":10},
     )
     assistant_response = completion.choices[0].message.content
     return assistant_response.replace("Journalist:", "").replace("[name],", "")
@@ -165,7 +175,6 @@ def extract_introduction_from_pdf(pdf_file_object):
                     if len(tokens) > max_tokens:
                         truncated_tokens = tokens[:max_tokens]
                         extracted_intro = encoding.decode(truncated_tokens) + "..."
-                    print(extracted_intro)
                 except Exception as e:
                     st.sidebar.warning(f"Could not tokenize/truncate introduction: {e}")
             return extracted_intro if extracted_intro else None
@@ -283,50 +292,50 @@ def loading_intro_from_pdf():
             disabled=True
         )
 
-    st.sidebar.divider()
-    st.sidebar.title("📝 Summarize Conversation")
+    #st.sidebar.divider()
+    #st.sidebar.title("📝 Summarize Conversation")
 
     # A summary can be generated if there is at least one user message
     user_messages_exist = any(m["role"] == "user" for m in st.session_state.get("messages", []))
 
-    if st.sidebar.button("Generate Lay Summary", disabled=not user_messages_exist, help="Generate a lay summary of the current conversation."):
-        with st.spinner("Generating summary..."):
-            try:
-                # Prepare the conversation content for the summary prompt
-                conversation_history = []
-                for msg in st.session_state.get("messages", []):
-                    # Exclude initial placeholder messages
-                    if "upload a paper" not in msg["content"].lower():
-                        conversation_history.append(f"{msg['role'].capitalize()}: {msg['content']}")
+    # if st.sidebar.button("Generate Lay Summary", disabled=not user_messages_exist, help="Generate a lay summary of the current conversation."):
+    #     with st.spinner("Generating summary..."):
+    #         try:
+    #             # Prepare the conversation content for the summary prompt
+    #             conversation_history = []
+    #             for msg in st.session_state.get("messages", []):
+    #                 # Exclude initial placeholder messages
+    #                 if "upload a paper" not in msg["content"].lower():
+    #                     conversation_history.append(f"{msg['role'].capitalize()}: {msg['content']}")
                 
-                conversation_text = "\n\n".join(conversation_history)
+    #             conversation_text = "\n\n".join(conversation_history)
 
-                # Prepare messages for the API call
-                summary_prompt_content = f"{LAY_SUMMARY_PROMPT}\n\n{conversation_text}"
-                api_messages_for_summary = [{"role": "user", "content": summary_prompt_content}]
+    #             # Prepare messages for the API call
+    #             summary_prompt_content = f"{LAY_SUMMARY_PROMPT}\n\n{conversation_text}"
+    #             api_messages_for_summary = [{"role": "user", "content": summary_prompt_content}]
 
-                # Use the currently selected model for summarization
-                selected_model_key = st.session_state.selected_model_name
-                config = MODEL_CONFIGS['GPT-3.5 Turbo']
-                client = openai.OpenAI(base_url=config["base_url"], api_key=config["api_key"])
-                completion = client.chat.completions.create(
-                    model=config["model"],
-                    messages=api_messages_for_summary,
-                )
-                assistant_response = completion.choices[0].message.content
+    #             # Use the currently selected model for summarization
+    #             config = MODEL_CONFIGS['GPT-3.5 Turbo']
+    #             client = openai.OpenAI(base_url=config["base_url"], api_key=config["api_key"])
+    #             completion = client.chat.completions.create(
+    #                 model=config["model"],
+    #                 messages=api_messages_for_summary,
+    #             )
+    #             assistant_response = completion.choices[0].message.content
                 
-                st.session_state.conversation_summary = assistant_response
-                st.rerun() # Rerun to display the summary text_area immediately
-            except Exception as e:
-                st.sidebar.error(f"Failed to generate summary: {e}")
+    #             st.session_state.conversation_summary = assistant_response
+    #             st.rerun() # Rerun to display the summary text_area immediately
+    #         except Exception as e:
+    #             st.sidebar.error(f"Failed to generate summary: {e}")
 
-    # Display the summary if it exists
-    if "conversation_summary" in st.session_state and st.session_state.conversation_summary:
-        st.sidebar.text_area("Conversation Summary", st.session_state.conversation_summary, height=250, key="summary_display")
+    # # Display the summary if it exists
+    # if "conversation_summary" in st.session_state and st.session_state.conversation_summary:
+    #     st.sidebar.text_area("Conversation Summary", st.session_state.conversation_summary, height=250, key="summary_display")
 
 st.write("LLM Science Explainers!")
 
 loading_intro_from_pdf()
+
 
 # Initialize chat history only if it doesn't exist (e.g., first app run).
 # If a PDF is uploaded, messages might be cleared to [], so this won't re-initialize then.
@@ -367,7 +376,7 @@ if st.session_state.get("extracted_introduction"):
                     if st.session_state.extracted_introduction:
                         api_messages_for_openai.append({
                             "role": "user",
-                            "content": "[PAPER]\n{}".format(st.session_state.extracted_introduction)
+                            "content": "[PAPER-TITLE]\n{}\n[PAPER]\n{}".format(st.session_state.last_uploaded_filename, st.session_state.extracted_introduction)
                         })
                     
                     # Add the rest of the conversation history
@@ -411,9 +420,7 @@ if st.session_state.extracted_introduction and not st.session_state.messages:
                 # Get config for selected model
                 selected_model_key = st.session_state.selected_model_name
                 config = MODEL_CONFIGS[selected_model_key]
-
-                # Create client on the fly
-                client = openai.OpenAI(base_url=config["base_url"], api_key=config["api_key"])
+                
                 # Prepare messages for OpenAI API, including the introduction and the default question.
                 api_messages_for_openai = []
 
@@ -421,18 +428,12 @@ if st.session_state.extracted_introduction and not st.session_state.messages:
 
                 if st.session_state.extracted_introduction:
                     api_messages_for_openai.append({"role": "user", 
-                                                    "content": "[PAPERT-TITLE]\n{}\n[PAPER]\n{}".format(st.session_state.last_uploaded_filename, st.session_state.extracted_introduction)})
+                                                    "content": "[PAPER-TITLE]\n{}\n[PAPER]\n{}".format(st.session_state.last_uploaded_filename, st.session_state.extracted_introduction)})
 
-                print(config)
-                completion = client.chat.completions.create(
-                    model=config["model"],
-                    messages=api_messages_for_openai,
-                    temperature=0.7,
-                    top_p=0.9,
-                )
-                assistant_response = completion.choices[0].message.content
-                assistant_response = assistant_response.replace("Journalist:", "")
-                assistant_response = assistant_response.replace("[name],", "")
+                # Get config for selected model
+                print(f"Calling API for user prompt with model: {selected_model_key}")
+                assistant_response = call_openai_api(api_messages_for_openai, selected_model_key)
+                
             except Exception as e:
                 print(e)
                 st.error(f"Error communicating with AI service: {e}")
