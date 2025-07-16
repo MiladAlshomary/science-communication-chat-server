@@ -142,7 +142,7 @@ def call_openai_api(messages_for_api, selected_model_name):
         temperature=0.7,
         top_p=0.9,
         max_completion_tokens=200,
-        extra_body={"temperature": 0.7, "top_p": 0.9, "min_new_tokens":10} if False else {"temperature": 0.7, "top_p": 0.9, "min_tokens":10},
+        extra_body={"temperature": 0.7, "top_p": 0.9, "min_new_tokens":10} if False else {"temperature": 0.7, "top_p": 0.9},
     )
     assistant_response = completion.choices[0].message.content
     return assistant_response.replace("Journalist:", "").replace("[name],", "")
