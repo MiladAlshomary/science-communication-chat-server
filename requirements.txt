@@ -2,3 +2,6 @@ streamlit
 openai
 pymupdf
 tiktoken
+SpeechRecognition 
+streamlit_mic_recorder
+streamlit-pdf-viewer

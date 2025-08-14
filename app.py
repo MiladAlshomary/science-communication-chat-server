@@ -1,5 +1,4 @@
 import streamlit as st
-import random
 import time
 import openai
 import fitz  # PyMuPDF
@@ -9,6 +8,8 @@ import json
 from datetime import datetime
 import os
 import base64
+from streamlit_mic_recorder import mic_recorder, speech_to_text
+from streamlit_pdf_viewer import pdf_viewer
 
 # Configure OpenAI API key
 # Create a secrets.toml file in your .streamlit folder:
@@ -17,6 +18,7 @@ OPENAI_API_KEY = st.secrets.get("OPENAI_API_KEY")
 FIREWORKAI_API_KEY = st.secrets.get("FIREWORKSAI-API-KEY")
 journalist_prompt = st.secrets.get("JOURNALIST_PROMPT")
 baseline_journalist_prompt = st.secrets.get("BASELINE_JOURNALIST_PROMPT")
+baseline_prompt = st.secrets.get("BASELINE_PROMPT")
 
 LAY_SUMMARY_PROMPT = """
 You are an expert science communicator. Your task is to create a lay summary of a conversation between a user and a journalist AI.
@@ -30,46 +32,32 @@ Here is the conversation:
 
 MODEL_CONFIGS = {
     "System 1": {
-        "model": "gpt-3.5-turbo",
+        "model": "gpt-4",
         "base_url": "https://api.openai.com/v1",
         "api_key": OPENAI_API_KEY,
-        "prompt": baseline_journalist_prompt,
+        "prompt": baseline_prompt,
     },
-    # "System 1": {
-    #     "model": "deepseek-ai/DeepSeek-R1-Distill-Qwen-14B",
-    #     "base_url": "http://localhost:7790/v1",
-    #     "api_key": FIREWORKAI_API_KEY,
-    #     "prompt": baseline_journalist_prompt,
-
-    # },
     "System 2": {
         "model": "meta-llama/Meta-Llama-3-8B-Instruct",
-        "base_url": "http://localhost:7789/v1",
-        "api_key": FIREWORKAI_API_KEY,
-        "prompt": baseline_journalist_prompt,
+        "base_url": "http://localhost:7790/v1",
+        "api_key": 'not-needed',
+        "prompt": baseline_prompt,
 
     },
     "System 3": {
+        "model": "meta-llama/Meta-Llama-3-8B-Instruct",
+        "base_url": "http://localhost:7790/v1",
+        "api_key": 'not-needed',
+        "prompt": baseline_journalist_prompt,
+
+    },
+    "System 4": {
         "model": "llm_journalist",
         "base_url": "http://localhost:7777/v1",
         "api_key": "not-needed",
         "prompt": journalist_prompt,
 
     },
-    # "System 4": {
-    #     "model": "accounts/fireworks/models/qwen2p5-1p5b-instruct",
-    #     "base_url": "https://api.fireworks.ai/inference/v1",
-    #     "api_key": FIREWORKAI_API_KEY,
-    #     "prompt": baseline_journalist_prompt,
-
-    # },
-    # "System 5": {
-    #     "model": "accounts/nid2107-80f709/models/ft-journalist-qwen",
-    #     "base_url": "https://api.fireworks.ai/inference/v1",
-    #     "api_key": FIREWORKAI_API_KEY,
-    #     "prompt": journalist_prompt,
-
-    # },
 }
 
 if not OPENAI_API_KEY:
@@ -133,16 +121,16 @@ def save_session_to_json():
 # Function to call OpenAI API
 def call_openai_api(messages_for_api, selected_model_name):
     config = MODEL_CONFIGS[selected_model_name]
-    print(config)
+    #print(config)
     client = openai.OpenAI(base_url=config["base_url"], api_key=config["api_key"])
-    print(messages_for_api)
+    #print(messages_for_api)
     completion = client.chat.completions.create(
         model=config["model"],
         messages=messages_for_api,
         temperature=0.7,
         top_p=0.9,
         max_completion_tokens=200,
-        extra_body={"temperature": 0.7, "top_p": 0.9, "min_new_tokens":10} if False else {"temperature": 0.7, "top_p": 0.9},
+        extra_body={"temperature": 0.3, "top_p": 0.95, "min_new_tokens":10} if False else {"temperature": 0.3, "top_p": 0.95},
     )
     assistant_response = completion.choices[0].message.content
     return assistant_response.replace("Journalist:", "").replace("[name],", "")
@@ -244,13 +232,25 @@ def loading_intro_from_pdf():
                     st.sidebar.warning(f"Could not extract 'Introduction' from '{uploaded_file.name}' or PDF is unreadable/empty. Previous context (if any) is retained.")
         
         if st.session_state.get("pdf_file_bytes"):
-            expander_title = "View Uploaded PDF"
-            if st.session_state.last_uploaded_filename:
-                expander_title += f" ({st.session_state.last_uploaded_filename})"
-            with st.sidebar.expander(expander_title, expanded=True):
-                base64_pdf = base64.b64encode(st.session_state.pdf_file_bytes).decode("utf-8")
-                pdf_display = f'<iframe src="data:application/pdf;base64,{base64_pdf}" width="100%" height="600" type="application/pdf"></iframe>'
-                st.markdown(pdf_display, unsafe_allow_html=True)
+            # expander_title = "View Uploaded PDF"
+            # if st.session_state.last_uploaded_filename:
+            #     expander_title += f" ({st.session_state.last_uploaded_filename})"
+            # with st.sidebar.expander(expander_title, expanded=True):
+            #     base64_pdf = base64.b64encode(st.session_state.pdf_file_bytes).decode("utf-8")
+            #     pdf_display = f'<iframe src="data:application/pdf;base64,{base64_pdf}" width="100%" height="600" type="application/pdf"></iframe>'
+            #     st.markdown(pdf_display, unsafe_allow_html=True)
+            # You can also display PDF from bytes data, for example, from a file uploader
+            binary_data = uploaded_file.getvalue()
+
+            # Customize the viewer with additional options
+            pdf_viewer(
+                input=binary_data,
+                width=700,
+                height=1000,
+                zoom_level=1.2,  # 120% zoom
+                viewer_align="center",  # Center alignment
+                show_page_separator=True  # Show separators between pages
+            )
                 
     elif st.session_state.last_uploaded_filename is not None: # File was removed by user
         # Also save session when file is removed
@@ -336,6 +336,9 @@ st.write("LLM Science Explainers!")
 
 loading_intro_from_pdf()
 
+# Initialize session state to store received text
+if 'text_received' not in st.session_state:
+    st.session_state.text_received = []
 
 # Initialize chat history only if it doesn't exist (e.g., first app run).
 # If a PDF is uploaded, messages might be cleared to [], so this won't re-initialize then.
@@ -405,6 +408,11 @@ if st.session_state.get("extracted_introduction"):
 else:
     # Show a disabled chat input if no paper is uploaded
     st.chat_input("Upload a paper to start chatting", disabled=True)
+    # # Example of recording and playing back audio
+    # st.write("Record your voice, and play the recorded audio:")
+    # audio = mic_recorder(start_prompt="⏺️", stop_prompt="⏹️", key='recorder')
+    # if audio:
+    #     st.audio(audio['bytes'])
 
 # If a PDF was uploaded and the chat is empty (new session for this PDF), trigger a default query.
 if st.session_state.extracted_introduction and not st.session_state.messages:
