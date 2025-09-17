@@ -52,7 +52,8 @@ MODEL_CONFIGS = {
 
     },
     "System 4": {
-        "model": "llm_journalist",
+        #"model": "llm_journalist",
+        "model": "/mnt/swordfish-pool2/milad/communicating-science-to-the-public/models/new-qwen-trained-journalist-on-deepseek-3epochs-full-model/",
         "base_url": "http://localhost:7777/v1",
         "api_key": "not-needed",
         "prompt": journalist_prompt,
@@ -69,7 +70,7 @@ def _get_session_data_and_filename():
     Returns a tuple (filename, session_data_dict).
     Returns (None, None) if the session is not ready to be saved.
     """
-    if not st.session_state.get("last_uploaded_filename") or not st.session_state.get("messages"):
+    if not st.session_state.get("paper_title") or not st.session_state.get("messages"):
         return None, None
 
     # Don't save if it's just the initial message or empty
@@ -77,7 +78,7 @@ def _get_session_data_and_filename():
         return None, None
 
     # Sanitize filename from paper title
-    paper_title = st.session_state.last_uploaded_filename
+    paper_title = st.session_state.paper_title
     base_title = os.path.splitext(paper_title)[0]
     sanitized_title = re.sub(r'[^\w\s-]', '', base_title).strip().replace(' ', '_')
 
@@ -129,8 +130,7 @@ def call_openai_api(messages_for_api, selected_model_name):
         messages=messages_for_api,
         temperature=0.7,
         top_p=0.9,
-        max_completion_tokens=200,
-        extra_body={"temperature": 0.3, "top_p": 0.95, "min_new_tokens":10} if False else {"temperature": 0.3, "top_p": 0.95},
+        extra_body={"temperature": 0.7, "top_p": 0.9, "stop": [], "max_tokens": 512},
     )
     assistant_response = completion.choices[0].message.content
     return assistant_response.replace("Journalist:", "").replace("[name],", "")
@@ -203,7 +203,20 @@ def loading_intro_from_pdf():
 
     # Sidebar for PDF upload
     st.sidebar.title("📄 Paper Context")
-    uploaded_file = st.sidebar.file_uploader("Upload your paper here", type="pdf")
+
+    # Input for paper title
+    st.session_state.paper_title = st.sidebar.text_input(
+        "1. Enter Paper Title:",
+        value=st.session_state.get("paper_title", ""),
+        help="Enter the title of the paper. This will be used for saving the session."
+    )
+
+    # File uploader, disabled if title is not entered
+    uploaded_file = st.sidebar.file_uploader(
+        "2. Upload your paper here",
+        type="pdf",
+        disabled=not st.session_state.paper_title
+    )
 
     # Manage extracted introduction in session state
     if "extracted_introduction" not in st.session_state:
@@ -232,14 +245,6 @@ def loading_intro_from_pdf():
                     st.sidebar.warning(f"Could not extract 'Introduction' from '{uploaded_file.name}' or PDF is unreadable/empty. Previous context (if any) is retained.")
         
         if st.session_state.get("pdf_file_bytes"):
-            # expander_title = "View Uploaded PDF"
-            # if st.session_state.last_uploaded_filename:
-            #     expander_title += f" ({st.session_state.last_uploaded_filename})"
-            # with st.sidebar.expander(expander_title, expanded=True):
-            #     base64_pdf = base64.b64encode(st.session_state.pdf_file_bytes).decode("utf-8")
-            #     pdf_display = f'<iframe src="data:application/pdf;base64,{base64_pdf}" width="100%" height="600" type="application/pdf"></iframe>'
-            #     st.markdown(pdf_display, unsafe_allow_html=True)
-            # You can also display PDF from bytes data, for example, from a file uploader
             binary_data = uploaded_file.getvalue()
 
             # Customize the viewer with additional options
@@ -379,7 +384,7 @@ if st.session_state.get("extracted_introduction"):
                     if st.session_state.extracted_introduction:
                         api_messages_for_openai.append({
                             "role": "user",
-                            "content": "[PAPER-TITLE]\n{}\n[PAPER]\n{}".format(st.session_state.last_uploaded_filename, st.session_state.extracted_introduction)
+                            "content": "[PAPERT-TITLE]\n{}\n[PAPER]\n{}\n".format(st.session_state.paper_title, st.session_state.extracted_introduction)
                         })
                     
                     # Add the rest of the conversation history
@@ -415,7 +420,7 @@ else:
     #     st.audio(audio['bytes'])
 
 # If a PDF was uploaded and the chat is empty (new session for this PDF), trigger a default query.
-if st.session_state.extracted_introduction and not st.session_state.messages:
+if st.session_state.extracted_introduction and not st.session_state.messages and not st.session_state.selected_model_name in ['System 1', 'System 2']:
     with st.chat_message("user"):
         st.markdown("Upload your paper, and lets start chatting!")
 
@@ -436,7 +441,7 @@ if st.session_state.extracted_introduction and not st.session_state.messages:
 
                 if st.session_state.extracted_introduction:
                     api_messages_for_openai.append({"role": "user", 
-                                                    "content": "[PAPER-TITLE]\n{}\n[PAPER]\n{}".format(st.session_state.last_uploaded_filename, st.session_state.extracted_introduction)})
+                                                    "content": "[PAPERT-TITLE]\n{}\n[PAPER]\n{}".format(st.session_state.paper_title, st.session_state.extracted_introduction)})
 
                 # Get config for selected model
                 print(f"Calling API for user prompt with model: {selected_model_key}")
