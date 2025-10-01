@@ -53,7 +53,7 @@ MODEL_CONFIGS = {
     },
     "System 4": {
         #"model": "llm_journalist",
-        "model": "/mnt/swordfish-pool2/milad/communicating-science-to-the-public/models/new-qwen-trained-journalist-on-deepseek-3epochs-full-model/",
+        "model": "/mnt/swordfish-pool2/milad/communicating-science-to-the-public/models/new-llama3-trained-journalist-on-deepseek-3epochs-final-full-model/",
         "base_url": "http://localhost:7777/v1",
         "api_key": "not-needed",
         "prompt": journalist_prompt,
