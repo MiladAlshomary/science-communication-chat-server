@@ -8,7 +8,7 @@ import json
 from datetime import datetime
 import os
 import base64
-from streamlit_mic_recorder import mic_recorder, speech_to_text
+from streamlit_mic_recorder import speech_to_text
 from streamlit_pdf_viewer import pdf_viewer
 
 # Configure OpenAI API key
@@ -37,7 +37,7 @@ MODEL_CONFIGS = {
         "api_key": OPENAI_API_KEY,
         "prompt": baseline_prompt,
     },
-    "System 2": {
+    "System Banana": {
         "model": "meta-llama/Meta-Llama-3-8B-Instruct",
         "base_url": "http://localhost:7790/v1",
         "api_key": 'not-needed',
@@ -51,7 +51,7 @@ MODEL_CONFIGS = {
         "prompt": baseline_journalist_prompt,
 
     },
-    "System 4": {
+    "System Mango": {
         #"model": "llm_journalist",
         "model": "/mnt/swordfish-pool2/milad/communicating-science-to-the-public/models/new-llama3-trained-journalist-on-deepseek-3epochs-final-full-model/",
         "base_url": "http://localhost:7777/v1",
@@ -269,6 +269,13 @@ def loading_intro_from_pdf():
         # Rerun to update the chat display immediately
         st.rerun()
 
+    # Add voice input to the sidebar if a paper is loaded
+    if st.session_state.get("extracted_introduction"):
+        st.session_state.text_from_speech = speech_to_text(
+            start_prompt="Start ⏺️", stop_prompt="Stop ⏹️", language='en',
+            use_container_width=True, just_once=True, key=f"speech_{len(st.session_state.get('messages', []))}"
+        )
+
     st.sidebar.divider()
     st.sidebar.title("📥 Download Session")
 
@@ -355,9 +362,19 @@ for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-# Accept user input only if a paper has been uploaded
+# Voice input and text input logic
+prompt = None
 if st.session_state.get("extracted_introduction"):
-    if prompt := st.chat_input("Type your answer here..."):
+    # Use the native st.chat_input which is always at the bottom
+    text_from_input = st.chat_input("Type your answer here...")
+
+    # Prioritize text from speech if available, otherwise use text from the input box
+    # The speech text is now read from session_state
+    text_from_speech = st.session_state.pop('text_from_speech', None)
+    prompt = text_from_speech if text_from_speech else text_from_input
+
+# Accept user input only if a paper has been uploaded
+if prompt:
         # Add user message to chat history
         st.session_state.messages.append({"role": "user", "content": prompt})
         # Display user message in chat message container
@@ -410,14 +427,6 @@ if st.session_state.get("extracted_introduction"):
 
         # Add assistant response to chat history
         st.session_state.messages.append({"role": "assistant", "content": full_response})
-else:
-    # Show a disabled chat input if no paper is uploaded
-    st.chat_input("Upload a paper to start chatting", disabled=True)
-    # # Example of recording and playing back audio
-    # st.write("Record your voice, and play the recorded audio:")
-    # audio = mic_recorder(start_prompt="⏺️", stop_prompt="⏹️", key='recorder')
-    # if audio:
-    #     st.audio(audio['bytes'])
 
 # If a PDF was uploaded and the chat is empty (new session for this PDF), trigger a default query.
 if st.session_state.extracted_introduction and not st.session_state.messages and not st.session_state.selected_model_name in ['System 1', 'System 2']:
