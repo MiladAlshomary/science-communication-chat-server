@@ -128,9 +128,9 @@ def call_openai_api(messages_for_api, selected_model_name):
     completion = client.chat.completions.create(
         model=config["model"],
         messages=messages_for_api,
-        temperature=0.7,
-        top_p=0.9,
-        extra_body={"temperature": 0.7, "top_p": 0.9, "stop": [], "max_tokens": 512},
+        temperature=1.0,
+        top_p=0.85,
+        extra_body={"temperature": 1.0, "top_p": 0.85, "stop": [], "max_tokens": 512},
     )
     assistant_response = completion.choices[0].message.content
     return assistant_response.replace("Journalist:", "").replace("[name],", "")
