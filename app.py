@@ -428,7 +428,7 @@ if prompt:
         st.session_state.messages.append({"role": "assistant", "content": full_response})
 
 # If a PDF was uploaded and the chat is empty (new session for this PDF), trigger a default query.
-if st.session_state.extracted_introduction and not st.session_state.messages and not st.session_state.selected_model_name in ['System 1', 'System 2']:
+if st.session_state.extracted_introduction and not st.session_state.messages and not st.session_state.selected_model_name in ['System 1', 'System 2', 'System Banana']:
     with st.chat_message("user"):
         st.markdown("Upload your paper, and lets start chatting!")
 
