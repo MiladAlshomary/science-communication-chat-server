@@ -273,8 +273,7 @@ def loading_intro_from_pdf():
     if st.session_state.get("extracted_introduction"):
         st.session_state.text_from_speech = speech_to_text(
             start_prompt="Start ⏺️", stop_prompt="Stop ⏹️", language='en',
-            use_container_width=True, just_once=True, key=f"speech_{len(st.session_state.get('messages', []))}"
-        )
+            use_container_width=True, just_once=True, key="speech_to_text_recorder")
 
     st.sidebar.divider()
     st.sidebar.title("📥 Download Session")
