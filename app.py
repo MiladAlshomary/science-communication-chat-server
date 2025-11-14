@@ -428,49 +428,51 @@ if prompt:
         st.session_state.messages.append({"role": "assistant", "content": full_response})
 
 # If a PDF was uploaded and the chat is empty (new session for this PDF), trigger a default query.
-if st.session_state.extracted_introduction and not st.session_state.messages and not st.session_state.selected_model_name in ['System 1', 'System 2', 'System Banana']:
-    with st.chat_message("user"):
-        st.markdown("Upload your paper, and lets start chatting!")
+if st.session_state.extracted_introduction and not st.session_state.messages:
+    selected_model_key = st.session_state.selected_model_name
+    if selected_model_key == "System Mango":
+        # For System Mango, add a default question and wait for user input.
+        default_question = "Thank you for uploading the paper. Before we start, could you please summarize the main contribution of the paper in a few sentences?"
+        st.session_state.messages.append({"role": "assistant", "content": default_question})
+        st.rerun()
+    elif selected_model_key not in ['System 1', 'System 2', 'System Banana']:
+        # For other systems (like System 3), trigger the initial API call.
+        with st.chat_message("user"):
+            st.markdown("Upload your paper, and lets start chatting!")
 
-    with st.chat_message("assistant"):
-        message_placeholder = st.empty()
-        full_response = ""
+        with st.chat_message("assistant"):
+            message_placeholder = st.empty()
+            full_response = ""
 
-        if st.session_state.get("selected_model_name"):
-            try:
-                # Get config for selected model
-                selected_model_key = st.session_state.selected_model_name
-                config = MODEL_CONFIGS[selected_model_key]
-                
-                # Prepare messages for OpenAI API, including the introduction and the default question.
-                api_messages_for_openai = []
+            if st.session_state.get("selected_model_name"):
+                try:
+                    config = MODEL_CONFIGS[selected_model_key]
+                    
+                    # Prepare messages for OpenAI API
+                    api_messages_for_openai = [
+                        {"role": "assistant", "content": config["prompt"]},
+                        {"role": "user", "content": f"[PAPERT-TITLE]\n{st.session_state.paper_title}\n[PAPER]\n{st.session_state.extracted_introduction}"}
+                    ]
 
-                api_messages_for_openai.append({"role": "assistant", "content": config["prompt"]})
+                    print(f"Calling API for initial prompt with model: {selected_model_key}")
+                    assistant_response = call_openai_api(api_messages_for_openai, selected_model_key)
+                    
+                except Exception as e:
+                    print(e)
+                    st.error(f"Error communicating with AI service: {e}")
+                    assistant_response = "Sorry, I encountered an error with the AI service."
+            else:
+                assistant_response = "Please select a model from the sidebar."
 
-                if st.session_state.extracted_introduction:
-                    api_messages_for_openai.append({"role": "user", 
-                                                    "content": "[PAPERT-TITLE]\n{}\n[PAPER]\n{}".format(st.session_state.paper_title, st.session_state.extracted_introduction)})
+            # Simulate stream of response with milliseconds delay
+            for chunk in assistant_response.split():
+                full_response += chunk + " "
+                time.sleep(0.05)
+                # Add a blinking cursor to simulate typing
+                message_placeholder.markdown(full_response + "▌")
+            message_placeholder.markdown(full_response)
 
-                # Get config for selected model
-                print(f"Calling API for user prompt with model: {selected_model_key}")
-                assistant_response = call_openai_api(api_messages_for_openai, selected_model_key)
-                
-            except Exception as e:
-                print(e)
-                st.error(f"Error communicating with AI service: {e}")
-                assistant_response = "Sorry, I encountered an error with the AI service."
-        else:
-            assistant_response = "Please select a model from the sidebar."
-
-        # Simulate stream of response with milliseconds delay
-        for chunk in assistant_response.split():
-            full_response += chunk + " "
-            time.sleep(0.05)
-            # Add a blinking cursor to simulate typing
-            message_placeholder.markdown(full_response + "▌")
-        message_placeholder.markdown(full_response)
-
-    # Update chat history with the assistant's response to the default query.
-    st.session_state.messages.append({"role": "assistant", "content": full_response})
-    # Rerun to display the first message and wait for user input
-    st.rerun()
+        # Update chat history with the assistant's response to the default query.
+        st.session_state.messages.append({"role": "assistant", "content": full_response})
+        # Rerun to display the first message and wait for user input
+        st.rerun()
