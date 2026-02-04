@@ -430,7 +430,7 @@ if prompt:
 # If a PDF was uploaded and the chat is empty (new session for this PDF), trigger a default query.
 if st.session_state.extracted_introduction and not st.session_state.messages:
     selected_model_key = st.session_state.selected_model_name
-    if selected_model_key == "System Mango":
+    if selected_model_key == "Llama3 Journalist":
         # For System Mango, add a default question and wait for user input.
         default_question = "Thank you for uploading the paper. Before we start, could you please summarize the main contribution of the paper in a few sentences?"
         st.session_state.messages.append({"role": "assistant", "content": default_question})
