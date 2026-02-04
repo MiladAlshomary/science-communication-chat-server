@@ -31,27 +31,27 @@ Here is the conversation:
 """
 
 MODEL_CONFIGS = {
-    "System 1": {
-        "model": "gpt-4",
-        "base_url": "https://api.openai.com/v1",
-        "api_key": OPENAI_API_KEY,
-        "prompt": baseline_prompt,
-    },
-    "System Banana": {
-        "model": "meta-llama/Meta-Llama-3-8B-Instruct",
-        "base_url": "http://localhost:7790/v1",
-        "api_key": 'not-needed',
-        "prompt": baseline_prompt,
+    # "System 1": {
+    #     "model": "gpt-4",
+    #     "base_url": "https://api.openai.com/v1",
+    #     "api_key": OPENAI_API_KEY,
+    #     "prompt": baseline_prompt,
+    # },
+    # "System Banana": {
+    #     "model": "meta-llama/Meta-Llama-3-8B-Instruct",
+    #     "base_url": "http://localhost:7790/v1",
+    #     "api_key": 'not-needed',
+    #     "prompt": baseline_prompt,
 
-    },
-    "System 3": {
-        "model": "meta-llama/Meta-Llama-3-8B-Instruct",
-        "base_url": "http://localhost:7790/v1",
-        "api_key": 'not-needed',
-        "prompt": baseline_journalist_prompt,
+    # },
+    # "System 3": {
+    #     "model": "meta-llama/Meta-Llama-3-8B-Instruct",
+    #     "base_url": "http://localhost:7790/v1",
+    #     "api_key": 'not-needed',
+    #     "prompt": baseline_journalist_prompt,
 
-    },
-    "System Mango": {
+    # },
+    "Llama3 Journalist": {
         #"model": "llm_journalist",
         "model": "/mnt/swordfish-pool2/milad/communicating-science-to-the-public/models/llama3-dpo-journalist-7b-lora-full-model/",
         "base_url": "http://localhost:7777/v1",
